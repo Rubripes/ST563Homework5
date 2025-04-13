@@ -1,0 +1,145 @@
+---
+title: "ST563 Homework 5"
+author: "Matt Bray"
+format: html
+editor: visual
+code-overflow: wrap
+---
+
+```{r setup, include=FALSE}
+#keep quiet on the warnings thrown, only warnings in this file were for library loads
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+## Modeling Implementation Problems
+The goal of this homework is to run two models from the notes.
+
+### Install Python, Keras, and make the tensorflow() package work
+```{r}
+#load libraries.  Order seems to be important to their installation if they are not already installed in your system
+
+#install.packages("keras")
+library(keras)
+#install_keras() below is necessary to unpack tensorflow(), but doesn't need to be run in each iteration of this code once keras is unpackaged in the environment.
+#install_keras()
+library(tensorflow)
+library(caret)
+library(tidyverse)
+#confirm tensorflow loaded
+#tf$constant("Hello TensorFlow!")
+
+```
+### Modeling
+First, we'll create a train and test split of the data and flatten.
+```{r}
+#load the data
+mnist <- dataset_mnist()
+#set seed for reproducibility
+set.seed(10)
+#Prepare training dataset
+train_images <- mnist$train$x %>%
+  array_reshape(c(60000, 28 * 28))
+train_images <- train_images / 255
+train_labels <- mnist$train$y %>%
+  to_categorical(10)
+
+#Prepare test dataset
+test_images <- mnist$test$x %>%
+  array_reshape(c(10000, 28 * 28))
+test_images <- test_images / 255
+test_labels <- mnist$test$y %>%
+  to_categorical(10)
+```
+
+Okay, that seemed to at least be marginally functional.  I tried to do this earlier and got errors there was not a valid version of tensorflow().  There are also objects containing data in the environment at this point.
+
+## Two layer Deep Learning model
+Below, we'll try a two layer deep learning model.  
+
+```{r}
+#define the layers and their activation funtions
+network <- keras_model_sequential() %>%
+  layer_dense(units = 512, activation = "relu",
+              input_shape = c(28 * 28)) %>%
+  layer_dense(units = 10, activation = "softmax")
+
+network
+```
+Now, we will compile and train the model.
+```{r}
+#compile model
+network %>% compile(
+  optimizer = optimizer_rmsprop(),
+  loss = "categorical_crossentropy",
+  metrics = c("accuracy")
+)
+
+#train model
+history <- network %>%
+  fit(train_images, train_labels,
+      epochs = 15, batch_size = 128,
+      validation_split = 0.2)
+
+plot(history)
+```
+Next, we'll plot a confusion matrix and the overall accuracy.  First, the Confusion Matrix.
+```{r}
+#it seems that "predict_classes()" has been removed from tensorflow, the following code was taken from https://tensorflow.rstudio.com/reference/keras/predict_proba
+pred <- network %>% 
+  predict(test_images) %>% k_argmax()
+#str(pred)
+#head(pred)
+#str(pred$numpy())
+#str(mnist$test$y)
+#str(as.factor(mnist$test$y))
+#str(pred)
+conf_mat <- table(as.factor(pred$numpy()), as.factor(mnist$test$y))
+names(dimnames(conf_mat)) <- c("Predicted", "Actual")
+conf_mat
+```
+Now, the accuracy
+```{r}
+accuracy <- sum(diag(conf_mat))/sum(conf_mat)
+accuracyPct <- accuracy*100
+```
+The model predictions from the test dataset result in `{r} accuracyPct` % accuracy.  This looks pretty good compared to models that I have trained before in this class.
+
+## Model 2, Multinomial Logistic Regression
+We'll first start with the code from the prompt that defines the model.
+```{r}
+#set a seed for reproducibility
+set.seed(10)
+#multnomial logit regression
+mlogit <- keras_model_sequential() %>%
+  layer_dense(input_shape = 28*28,
+              units = 10, activation = "softmax")
+
+#compile network
+mlogit %>% compile(
+  optimizer = optimizer_rmsprop(),
+  loss = "categorical_crossentropy",
+  metrics = c("accuracy")
+)
+
+#train the model
+historyLogit <- mlogit %>%
+  fit(train_images, train_labels,
+      epochs = 15, batch_size = 128, 
+      validation_split = 0.2)
+
+plot(historyLogit)
+```
+The multinomial logit regression doesn't look as good as the two layer deep learning model from prompt one.  Let's plot the confusion matrix as evalute the accuracy to see a direct comparison on the test dataset.
+```{r}
+predLogit <- mlogit %>% 
+  predict(test_images) %>% k_argmax()
+conf_mat_logit <- table(as.factor(predLogit$numpy()), as.factor(mnist$test$y))
+names(dimnames(conf_mat_logit)) <- c("Predicted", "Actual")
+conf_mat_logit
+```
+Now, the accuracy of the multinomial logit regression:
+```{r}
+accuracyLogit <- sum(diag(conf_mat_logit))/sum(conf_mat_logit)
+accuracyPctLogit <- accuracyLogit*100
+```
+The model predictions from the test dataset result in `{r} accuracyPctLogit` % accuracy.  This is quite a bit lower than the accuracy of the two layer deep learning model.
